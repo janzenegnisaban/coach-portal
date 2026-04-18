@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coaches — KaliArena Admin</title>
+  <link rel="icon" href="logo.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><img src="logo.png" alt="KaliArena" style="height:2rem;width:auto;object-fit:contain;flex-shrink:0;"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Coaches</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Coaches</h1>
+              <p class="page-subtitle">All registered coaches and their teams.</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <div class="table-toolbar">
+              <div class="search-input-wrap">
+                <i data-lucide="search"></i>
+                <input type="text" id="search" class="form-input search-input" placeholder="Search coaches…" oninput="filterCoaches(this.value)">
+              </div>
+              <span class="text-sm text-muted" id="coach-count"></span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr><th>Coach</th><th>Email</th><th>Team</th><th>Players</th><th>Joined</th></tr>
+                </thead>
+                <tbody id="coaches-tbody">
+                  <tr><td colspan="5" class="table-empty">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'coaches.html';
+    let allCoaches = [];
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      renderNav(PAGE);
+      setHeaderUser(ctx.profile);
+
+      // Get all coach profiles joined with their teams
+      const { data: coaches } = await window.db
+        .from('profiles')
+        .select('id, first_name, last_name, email, created_at, teams(id, name, players_count)')
+        .contains('roles', ['coach'])
+        .order('created_at', { ascending: false });
+
+      allCoaches = coaches || [];
+      renderCoaches(allCoaches);
+      showApp();
+      refreshIcons();
+    }
+
+    function renderCoaches(coaches) {
+      document.getElementById('coach-count').textContent = `${coaches.length} coach${coaches.length !== 1 ? 'es' : ''}`;
+      if (coaches.length === 0) {
+        document.getElementById('coaches-tbody').innerHTML = `<tr><td colspan="5" class="table-empty">No coaches found.</td></tr>`;
+        return;
+      }
+      document.getElementById('coaches-tbody').innerHTML = coaches.map(c => {
+        const name = c.first_name ? `${c.first_name} ${c.last_name || ''}`.trim() : '(no name)';
+        const team = c.teams?.[0];
+        return `
+          <tr>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="avatar avatar-sm">${getInitials(name)}</div>
+                <span class="font-medium">${escHtml(name)}</span>
+              </div>
+            </td>
+            <td class="text-sm text-muted">${escHtml(c.email || '—')}</td>
+            <td>${team ? escHtml(team.name) : '<span class="text-muted text-sm">No team</span>'}</td>
+            <td>${team ? (team.players_count || 0) : '—'}</td>
+            <td class="text-sm text-muted">${formatDate(c.created_at)}</td>
+          </tr>
+        `;
+      }).join('');
+      refreshIcons();
+    }
+
+    function filterCoaches(q) {
+      const l = q.toLowerCase();
+      renderCoaches(allCoaches.filter(c => {
+        const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
+        return name.includes(l) || (c.email || '').toLowerCase().includes(l);
+      }));
+    }
+
+    init();
+  </script>
+</body>
+</html>

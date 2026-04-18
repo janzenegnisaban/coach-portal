@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teams & Players — KaliArena Admin</title>
+  <link rel="icon" href="logo.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><img src="logo.png" alt="KaliArena" style="height:2rem;width:auto;object-fit:contain;flex-shrink:0;"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Teams & Players</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Teams & Players</h1>
+              <p class="page-subtitle">Full roster across all registered coaches and teams.</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <div class="table-toolbar">
+              <div class="search-input-wrap">
+                <i data-lucide="search"></i>
+                <input type="text" id="search" class="form-input search-input" placeholder="Search teams or players…" oninput="filterTeams(this.value)">
+              </div>
+              <span class="text-sm text-muted" id="team-count"></span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr><th>Team</th><th>Coach</th><th>Players</th><th>Wins</th><th>Losses</th><th></th></tr>
+                </thead>
+                <tbody id="teams-tbody">
+                  <tr><td colspan="6" class="table-empty">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Players drawer -->
+          <div id="players-panel" class="hidden" style="margin-top:1.5rem;">
+            <div class="section-title" id="players-panel-title"></div>
+            <div class="table-wrap">
+              <div class="table-scroll">
+                <table>
+                  <thead><tr><th>Name</th><th>Belt</th><th>Category</th><th>Age</th><th>Matches</th><th>W/L</th></tr></thead>
+                  <tbody id="players-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'teams.html';
+    let allTeams = [];
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      renderNav(PAGE);
+      setHeaderUser(ctx.profile);
+
+      const { data } = await window.db
+        .from('teams')
+        .select('*, profiles!coach_id(first_name, last_name, email)')
+        .order('name');
+      allTeams = data || [];
+      renderTeams(allTeams);
+      showApp();
+      refreshIcons();
+    }
+
+    function renderTeams(teams) {
+      document.getElementById('team-count').textContent = `${teams.length} team${teams.length !== 1 ? 's' : ''}`;
+      if (teams.length === 0) {
+        document.getElementById('teams-tbody').innerHTML = `<tr><td colspan="6" class="table-empty">No teams found.</td></tr>`;
+        return;
+      }
+      document.getElementById('teams-tbody').innerHTML = teams.map(t => {
+        const c = t.profiles;
+        const coachName = c?.first_name ? `${c.first_name} ${c.last_name || ''}`.trim() : c?.email || '—';
+        return `
+          <tr>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="avatar avatar-sm">${getInitials(t.name)}</div>
+                <span class="font-medium">${escHtml(t.name)}</span>
+              </div>
+            </td>
+            <td class="text-sm">${escHtml(coachName)}</td>
+            <td>${t.players_count || 0}</td>
+            <td style="color:#059669;font-weight:600;">${t.wins || 0}</td>
+            <td style="color:#dc2626;font-weight:600;">${t.losses || 0}</td>
+            <td>
+              <button class="btn btn-secondary btn-sm" onclick="viewPlayers('${t.id}', '${escHtml(t.name)}')">
+                <i data-lucide="users"></i> Players
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      refreshIcons();
+    }
+
+    function filterTeams(q) {
+      const l = q.toLowerCase();
+      renderTeams(allTeams.filter(t => t.name?.toLowerCase().includes(l)));
+    }
+
+    async function viewPlayers(teamId, teamName) {
+      const panel = document.getElementById('players-panel');
+      document.getElementById('players-panel-title').innerHTML = `<i data-lucide="users"></i> Players: ${escHtml(teamName)}`;
+      document.getElementById('players-tbody').innerHTML = `<tr><td colspan="6" class="table-empty">Loading…</td></tr>`;
+      panel.classList.remove('hidden');
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      const { data: players } = await window.db.from('players').select('*').eq('team_id', teamId).order('name');
+      const list = players || [];
+      if (list.length === 0) {
+        document.getElementById('players-tbody').innerHTML = `<tr><td colspan="6" class="table-empty">No players in this team.</td></tr>`;
+      } else {
+        document.getElementById('players-tbody').innerHTML = list.map(p => `
+          <tr>
+            <td><div class="flex items-center gap-2"><div class="avatar avatar-sm">${getInitials(p.name)}</div><span>${escHtml(p.name)}</span></div></td>
+            <td>${p.belt_level ? `<span class="badge badge-gray">${escHtml(p.belt_level)}</span>` : '—'}</td>
+            <td>${escHtml(p.category || '—')}</td>
+            <td>${p.age || '—'}</td>
+            <td>${p.matches || 0}</td>
+            <td><span style="color:#059669;">${p.wins || 0}</span> / <span style="color:#dc2626;">${p.losses || 0}</span></td>
+          </tr>
+        `).join('');
+      }
+      refreshIcons();
+    }
+
+    init();
+  </script>
+</body>
+</html>

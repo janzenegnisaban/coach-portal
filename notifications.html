@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications — KaliArena Admin</title>
+  <link rel="icon" href="logo.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><img src="logo.png" alt="KaliArena" style="height:2rem;width:auto;object-fit:contain;flex-shrink:0;"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Match Notifications</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Match Notifications</h1>
+              <p class="page-subtitle">Review and approve match notifications submitted by organizers. Approved notifications are visible to coaches.</p>
+            </div>
+          </div>
+
+          <!-- Filter tabs -->
+          <div class="flex gap-2 mb-4 flex-wrap" id="filter-tabs">
+            <button class="btn btn-primary btn-sm active-tab" data-filter="pending"  onclick="setFilter('pending',  this)">Pending</button>
+            <button class="btn btn-secondary btn-sm"          data-filter="approved" onclick="setFilter('approved', this)">Approved</button>
+            <button class="btn btn-secondary btn-sm"          data-filter="rejected" onclick="setFilter('rejected', this)">Rejected</button>
+            <button class="btn btn-secondary btn-sm"          data-filter="all"      onclick="setFilter('all',      this)">All</button>
+          </div>
+
+          <div id="notif-list">
+            <div class="text-sm text-muted">Loading…</div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'notifications.html';
+    let currentFilter = 'pending';
+    let adminUserId;
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      adminUserId = ctx.session.user.id;
+      renderNav(PAGE);
+      setHeaderUser(ctx.profile);
+      await loadNotifs();
+      showApp();
+      refreshIcons();
+    }
+
+    function setFilter(f, btn) {
+      currentFilter = f;
+      document.querySelectorAll('#filter-tabs button').forEach(b => {
+        b.className = b === btn ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+      });
+      loadNotifs();
+    }
+
+    async function loadNotifs() {
+      let q = window.db.from('match_notifications')
+        .select('*, competitions(name), profiles!created_by(first_name, last_name, email)')
+        .order('created_at', { ascending: false });
+
+      if (currentFilter !== 'all') q = q.eq('status', currentFilter);
+
+      const { data, error } = await q;
+      const notifs = data || [];
+      const container = document.getElementById('notif-list');
+
+      if (error) { container.innerHTML = `<div class="alert alert-error">${escHtml(error.message)}</div>`; return; }
+
+      if (notifs.length === 0) {
+        container.innerHTML = `<div class="empty-state"><i data-lucide="bell"></i><h3>No ${currentFilter} notifications</h3></div>`;
+        refreshIcons(); return;
+      }
+
+      container.innerHTML = `<div style="display:flex;flex-direction:column;gap:.75rem;">` +
+        notifs.map(n => {
+          const org = n.profiles;
+          const orgName = org?.first_name ? `${org.first_name} ${org.last_name || ''}`.trim() : org?.email || 'Unknown';
+          return `
+            <div class="card">
+              <div class="card-content" style="padding:1rem;">
+                <div class="flex items-start gap-3">
+                  <div class="stat-icon tile-amber" style="width:2.5rem;height:2.5rem;border-radius:.75rem;flex-shrink:0;margin-top:.125rem;">
+                    <i data-lucide="bell"></i>
+                  </div>
+                  <div class="flex-1">
+                    <div class="flex items-start justify-between gap-2 flex-wrap">
+                      <div>
+                        <div class="font-semibold">${escHtml(n.title)}</div>
+                        <div class="text-sm text-muted mt-1">
+                          ${n.court ? `Court <strong>${escHtml(n.court)}</strong> &nbsp;·&nbsp; ` : ''}
+                          ${n.scheduled_at ? formatDateTime(n.scheduled_at) + ' &nbsp;·&nbsp; ' : ''}
+                          By <strong>${escHtml(orgName)}</strong>
+                          ${n.competitions?.name ? ` &nbsp;·&nbsp; ${escHtml(n.competitions.name)}` : ''}
+                        </div>
+                        <div class="text-xs text-muted mt-1">Submitted ${timeAgo(n.created_at)}</div>
+                      </div>
+                      ${statusBadge(n.status)}
+                    </div>
+                    ${n.status === 'pending' ? `
+                      <div class="flex gap-2 mt-3">
+                        <button class="btn btn-primary btn-sm" onclick="approve('${n.id}')">
+                          <i data-lucide="check-circle"></i> Approve
+                        </button>
+                        <button class="btn btn-destructive btn-sm" onclick="reject('${n.id}')">
+                          <i data-lucide="x-circle"></i> Reject
+                        </button>
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('') + `</div>`;
+
+      refreshIcons();
+    }
+
+    async function approve(id) {
+      const { error } = await window.db.from('match_notifications')
+        .update({ status: 'approved', confirmed_by: adminUserId, confirmed_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) { showToast('Failed to approve: ' + error.message, 'error'); return; }
+      showToast('Notification approved — coaches can now see it.', 'success');
+      loadNotifs();
+    }
+
+    async function reject(id) {
+      if (!confirmAction('Reject this notification? This will hide it from coaches.')) return;
+      const { error } = await window.db.from('match_notifications')
+        .update({ status: 'rejected', confirmed_by: adminUserId, confirmed_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) { showToast('Failed to reject: ' + error.message, 'error'); return; }
+      showToast('Notification rejected.', 'info');
+      loadNotifs();
+    }
+
+    init();
+  </script>
+</body>
+</html>

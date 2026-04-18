@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Accounts — KaliArena Admin</title>
+  <link rel="icon" href="logo.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><img src="logo.png" alt="KaliArena" style="height:2rem;width:auto;object-fit:contain;flex-shrink:0;"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">All Accounts</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">All Accounts</h1>
+              <p class="page-subtitle">Directory of all registered users across all roles.</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <div class="table-toolbar">
+              <div class="search-input-wrap">
+                <i data-lucide="search"></i>
+                <input type="text" id="search" class="form-input search-input" placeholder="Search by name or email…" oninput="filterUsers(this.value)">
+              </div>
+              <span class="text-sm text-muted" id="user-count"></span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Roles</th>
+                    <th>Joined</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="users-tbody">
+                  <tr><td colspan="5" class="table-empty">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <!-- Detail drawer -->
+  <div class="dialog-overlay hidden" id="user-detail">
+    <div class="dialog">
+      <div class="dialog-title" id="detail-name"></div>
+      <div id="detail-content"></div>
+      <div class="dialog-footer">
+        <button class="btn btn-secondary" onclick="closeDialog('user-detail')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'users.html';
+    let allUsers = [];
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      renderNav(PAGE);
+      setHeaderUser(ctx.profile);
+
+      const { data, error } = await window.db
+        .from('profiles')
+        .select('id, first_name, last_name, email, roles, role, phone, bio, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) { showToast('Error loading users: ' + error.message, 'error'); }
+      allUsers = data || [];
+      renderUsers(allUsers);
+      showApp();
+      refreshIcons();
+    }
+
+    function renderUsers(users) {
+      document.getElementById('user-count').textContent = `${users.length} account${users.length !== 1 ? 's' : ''}`;
+      if (users.length === 0) {
+        document.getElementById('users-tbody').innerHTML = `<tr><td colspan="5" class="table-empty">No users found.</td></tr>`;
+        return;
+      }
+      document.getElementById('users-tbody').innerHTML = users.map(u => {
+        const roles = u.roles?.length ? u.roles : [u.role].filter(Boolean);
+        const name  = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : '(no name)';
+        return `
+          <tr>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="avatar avatar-sm">${getInitials(name)}</div>
+                <span class="font-medium">${escHtml(name)}</span>
+              </div>
+            </td>
+            <td class="text-sm text-muted">${escHtml(u.email || '—')}</td>
+            <td><div class="flex gap-1 flex-wrap">${roles.map(r => statusBadge(r)).join('')}</div></td>
+            <td class="text-sm text-muted">${formatDate(u.created_at)}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm btn-icon" onclick="viewUser('${u.id}')" title="View details">
+                <i data-lucide="eye"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      refreshIcons();
+    }
+
+    function filterUsers(q) {
+      const lower = q.toLowerCase();
+      renderUsers(allUsers.filter(u => {
+        const name = `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
+        return name.includes(lower) || (u.email || '').toLowerCase().includes(lower);
+      }));
+    }
+
+    function viewUser(id) {
+      const u = allUsers.find(x => x.id === id);
+      if (!u) return;
+      const roles = u.roles?.length ? u.roles : [u.role].filter(Boolean);
+      const name  = u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : '(no name)';
+      document.getElementById('detail-name').textContent = name;
+      document.getElementById('detail-content').innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:.75rem;font-size:.875rem;">
+          <div class="flex justify-between"><span class="text-muted">Email</span><span>${escHtml(u.email || '—')}</span></div>
+          <div class="flex justify-between"><span class="text-muted">Phone</span><span>${escHtml(u.phone || '—')}</span></div>
+          <div class="flex justify-between items-center"><span class="text-muted">Roles</span><div class="flex gap-1">${roles.map(r => statusBadge(r)).join('')}</div></div>
+          <div class="flex justify-between"><span class="text-muted">Joined</span><span>${formatDate(u.created_at)}</span></div>
+          ${u.bio ? `<div><span class="text-muted">Bio</span><p style="margin-top:.25rem;">${escHtml(u.bio)}</p></div>` : ''}
+        </div>
+      `;
+      openDialog('user-detail');
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -3,28 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard — KaliArena Coach</title>
+  <title>Dashboard — KaliArena Admin</title>
+  <link rel="icon" href="logo.png">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
   <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
 
   <div class="app-shell hidden" id="app-shell">
-    <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="sidebar-logo"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-logo"><img src="logo.png" alt="KaliArena" style="height:2rem;width:auto;object-fit:contain;flex-shrink:0;"><span class="sidebar-logo-text">KaliArena</span></div>
       <div class="sidebar-badge-area" id="sidebar-badge"></div>
       <nav class="sidebar-nav" id="sidebar-nav"></nav>
     </aside>
 
-    <!-- Main -->
     <div class="main-content">
       <header class="portal-header">
         <div class="header-left">
-          <div>
-            <div class="header-title" id="header-title">Dashboard</div>
-            <div class="header-subtitle" id="header-team-name"></div>
-          </div>
+          <div class="header-title">Admin Dashboard</div>
         </div>
         <div class="header-right">
           <span class="header-user-name" id="header-user-name"></span>
@@ -34,58 +30,60 @@
 
       <main class="page-content">
         <div class="page-wrap">
-          <!-- Welcome -->
           <div class="page-header">
             <div class="page-header-text">
-              <h1 class="page-title" id="welcome-title">Welcome back</h1>
-              <p class="page-subtitle">Here's a summary of your team's performance.</p>
+              <h1 class="page-title">Admin Dashboard</h1>
+              <p class="page-subtitle">System overview — all coaches, events, and players.</p>
             </div>
-            <a href="players.html" class="btn btn-primary"><i data-lucide="plus"></i> Add Player</a>
           </div>
 
           <!-- Stats -->
-          <div class="stats-grid" id="stats-grid">
-            <div class="stat-card"><div class="stat-icon tile-primary"><i data-lucide="users"></i></div><div class="stat-label">Players</div><div class="stat-value" id="stat-players">—</div></div>
-            <div class="stat-card"><div class="stat-icon tile-blue"><i data-lucide="layers"></i></div><div class="stat-label">Categories</div><div class="stat-value" id="stat-cats">—</div></div>
-            <div class="stat-card"><div class="stat-icon tile-amber"><i data-lucide="swords"></i></div><div class="stat-label">Total Matches</div><div class="stat-value" id="stat-matches">—</div></div>
-            <div class="stat-card"><div class="stat-icon tile-emerald"><i data-lucide="trending-up"></i></div><div class="stat-label">Win Rate</div><div class="stat-value" id="stat-winrate">—</div></div>
+          <div class="stats-grid-3" id="stats-grid">
+            <div class="stat-card"><div class="stat-icon tile-primary"><i data-lucide="users"></i></div><div class="stat-label">Total Coaches</div><div class="stat-value" id="stat-coaches">—</div></div>
+            <div class="stat-card"><div class="stat-icon tile-emerald"><i data-lucide="calendar-days"></i></div><div class="stat-label">Active Events</div><div class="stat-value" id="stat-events">—</div></div>
+            <div class="stat-card"><div class="stat-icon tile-blue"><i data-lucide="shield"></i></div><div class="stat-label">Registered Players</div><div class="stat-value" id="stat-players">—</div></div>
           </div>
 
-          <!-- No team notice -->
-          <div id="no-team-notice" class="alert alert-warning hidden" style="margin-bottom:1.5rem;">
-            <i data-lucide="alert-triangle" style="width:1rem;height:1rem;"></i>
-            You don't have a team yet. Go to <a href="settings.html" style="font-weight:600;color:var(--foreground);">Settings</a> to create one.
-          </div>
-
-          <!-- Quick links -->
-          <div class="grid-2" style="margin-bottom:1.5rem;">
+          <!-- Pending notifications -->
+          <div class="grid-2">
             <div class="card">
-              <div class="card-header"><div class="card-title"><i data-lucide="zap"></i> Quick Actions</div></div>
-              <div class="card-content" style="display:flex;flex-direction:column;gap:.5rem;">
-                <a href="players.html" class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="users"></i> Manage Players</a>
-                <a href="schedule.html" class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="calendar"></i> View Schedule</a>
-                <a href="events.html" class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="calendar-days"></i> Browse Events</a>
-                <a href="rankings.html" class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="trophy"></i> Check Rankings</a>
+              <div class="card-header">
+                <div class="card-title"><i data-lucide="bell"></i> Pending Notifications</div>
+                <div class="card-description">Match notifications awaiting your approval</div>
+              </div>
+              <div class="card-content" id="pending-notifs">
+                <div class="empty-state" style="padding:1.5rem;"><i data-lucide="bell"></i><h3>No pending notifications</h3></div>
+              </div>
+              <div class="card-footer">
+                <a href="notifications.html" class="btn btn-secondary btn-sm">View all notifications</a>
               </div>
             </div>
 
             <div class="card">
               <div class="card-header">
-                <div class="card-title"><i data-lucide="users"></i> Recent Players</div>
+                <div class="card-title"><i data-lucide="zap"></i> Quick Actions</div>
               </div>
-              <div class="card-content" id="recent-players">
-                <div class="empty-state" style="padding:1.5rem;">
-                  <i data-lucide="users"></i>
-                  <h3>No players yet</h3>
-                  <p style="font-size:.8125rem;">Add players to see them here.</p>
-                </div>
+              <div class="card-content" style="display:flex;flex-direction:column;gap:.5rem;">
+                <a href="users.html"         class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="users"></i> All Accounts</a>
+                <a href="notifications.html" class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="bell"></i> Approve Notifications</a>
+                <a href="events.html"        class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="calendar-days"></i> Manage Events</a>
+                <a href="rankings.html"      class="btn btn-secondary" style="justify-content:flex-start;"><i data-lucide="trophy"></i> View Rankings</a>
               </div>
+            </div>
+          </div>
+
+          <!-- Recent accounts -->
+          <div class="card" style="margin-top:1.5rem;">
+            <div class="card-header">
+              <div class="card-title"><i data-lucide="user-check"></i> Recent Accounts</div>
+            </div>
+            <div class="card-content" id="recent-accounts">
+              <div class="text-sm text-muted">Loading…</div>
             </div>
           </div>
         </div>
       </main>
 
-      <!-- Mobile Nav -->
       <nav class="mobile-nav" id="mobile-nav"></nav>
     </div>
   </div>
@@ -108,45 +106,53 @@
       renderNav(PAGE);
       setHeaderUser(profile);
 
-      const name = profile.first_name || profile.email?.split('@')[0] || 'Coach';
-      document.getElementById('welcome-title').textContent = `Welcome back, ${name}`;
+      // Stats
+      const [coachRes, playerRes, eventRes, notifRes, accountRes] = await Promise.all([
+        window.db.from('profiles').select('id', { count: 'exact', head: true }).contains('roles', ['coach']),
+        window.db.from('players').select('id', { count: 'exact', head: true }),
+        window.db.from('competitions').select('id', { count: 'exact', head: true }).eq('status', 'upcoming'),
+        window.db.from('match_notifications').select('id, title, court, scheduled_at, created_at').eq('status', 'pending').order('created_at', { ascending: false }).limit(5),
+        window.db.from('profiles').select('id, first_name, last_name, email, roles, role, created_at').order('created_at', { ascending: false }).limit(6),
+      ]);
 
-      // Load team
-      const { data: teams } = await window.db.from('teams').select('*').eq('coach_id', session.user.id).limit(1);
-      const team = teams?.[0];
+      document.getElementById('stat-coaches').textContent  = coachRes.count  ?? '—';
+      document.getElementById('stat-players').textContent  = playerRes.count ?? '—';
+      document.getElementById('stat-events').textContent   = eventRes.count  ?? '—';
 
-      if (team) {
-        document.getElementById('header-team-name').textContent = team.name;
-      } else {
-        document.getElementById('no-team-notice').classList.remove('hidden');
-      }
-
-      // Load players
-      const { data: players } = await window.db.from('players').select('*').eq('coach_id', session.user.id);
-      const all = players || [];
-
-      const totalMatches = all.reduce((s, p) => s + (p.matches || 0), 0);
-      const totalWins    = all.reduce((s, p) => s + (p.wins || 0), 0);
-      const cats         = new Set(all.map(p => p.category).filter(Boolean)).size;
-
-      document.getElementById('stat-players').textContent = all.length;
-      document.getElementById('stat-cats').textContent    = cats;
-      document.getElementById('stat-matches').textContent = totalMatches;
-      document.getElementById('stat-winrate').textContent = pct(totalWins, totalMatches) + '%';
-
-      // Recent players
-      const recent = all.slice(0, 5);
-      if (recent.length > 0) {
-        document.getElementById('recent-players').innerHTML = recent.map(p => `
+      // Pending notifications
+      const notifs = notifRes.data || [];
+      if (notifs.length > 0) {
+        document.getElementById('pending-notifs').innerHTML = notifs.map(n => `
           <div class="flex items-center gap-3" style="padding:.5rem 0;border-bottom:1px solid var(--border);">
-            <div class="avatar avatar-sm">${getInitials(p.name)}</div>
+            <div class="stat-icon tile-amber" style="width:2rem;height:2rem;border-radius:.5rem;flex-shrink:0;"><i data-lucide="bell" style="width:.875rem;height:.875rem;"></i></div>
             <div class="flex-1 truncate">
-              <div class="font-medium text-sm truncate">${escHtml(p.name)}</div>
-              <div class="text-xs text-muted">${escHtml(p.belt_level || p.category || '—')}</div>
+              <div class="font-medium text-sm truncate">${escHtml(n.title)}</div>
+              <div class="text-xs text-muted">${n.court ? 'Court ' + escHtml(n.court) + ' · ' : ''}${formatDate(n.scheduled_at)}</div>
             </div>
-            <span class="badge badge-gray">${p.wins || 0}W</span>
+            <span class="badge badge-amber">Pending</span>
           </div>
         `).join('');
+      }
+
+      // Recent accounts
+      const accounts = accountRes.data || [];
+      if (accounts.length > 0) {
+        document.getElementById('recent-accounts').innerHTML = accounts.map(a => {
+          const roles = a.roles?.length ? a.roles : [a.role].filter(Boolean);
+          const name  = a.first_name ? `${a.first_name} ${a.last_name || ''}`.trim() : a.email;
+          return `
+            <div class="flex items-center gap-3" style="padding:.5rem 0;border-bottom:1px solid var(--border);">
+              <div class="avatar avatar-sm">${getInitials(name)}</div>
+              <div class="flex-1 truncate">
+                <div class="font-medium text-sm truncate">${escHtml(name)}</div>
+                <div class="text-xs text-muted">${escHtml(a.email)}</div>
+              </div>
+              <div class="flex gap-1 flex-wrap">${roles.map(r => statusBadge(r)).join('')}</div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        document.getElementById('recent-accounts').innerHTML = '<div class="text-sm text-muted">No accounts found</div>';
       }
 
       showApp();
