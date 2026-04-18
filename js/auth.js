@@ -1,9 +1,9 @@
 // ============================================================
-// KaliArena — Auth helpers  |  ADMIN PORTAL
+// KaliArena — Auth helpers  |  COACH PORTAL
 // ============================================================
-const PORTAL_ROLE = 'admin';
-const DASHBOARD   = 'dashboard.html';
-const LOGIN_PAGE  = 'index.html';
+const PORTAL_ROLE  = 'coach';
+const DASHBOARD    = 'dashboard.html';
+const LOGIN_PAGE   = 'index.html';
 
 async function requireRole() {
   if (!window.db) return null;
@@ -19,7 +19,7 @@ async function requireRole() {
   if (error || !profile) { await window.db.auth.signOut(); window.location.href = LOGIN_PAGE; return null; }
 
   const roles = profile.roles?.length ? profile.roles : [profile.role].filter(Boolean);
-  if (!roles.includes('admin') && !roles.includes('super-admin')) {
+  if (!roles.includes(PORTAL_ROLE)) {
     await window.db.auth.signOut();
     window.location.href = LOGIN_PAGE;
     return null;
@@ -34,9 +34,9 @@ async function signIn(email, password) {
   const { data: profile } = await window.db
     .from('profiles').select('roles, role').eq('id', data.user.id).single();
   const roles = profile?.roles?.length ? profile.roles : [profile?.role].filter(Boolean);
-  if (!roles.includes('admin') && !roles.includes('super-admin')) {
+  if (!roles.includes(PORTAL_ROLE)) {
     await window.db.auth.signOut();
-    return { error: `You don't have access to the Admin portal. Contact a Super Admin to grant you access.` };
+    return { error: `You don't have access to the Coach portal.` };
   }
   return { data, error: null };
 }
@@ -46,6 +46,7 @@ async function signOut() {
   window.location.href = LOGIN_PAGE;
 }
 
+// Redirect already-logged-in users away from the login page
 async function redirectIfLoggedIn() {
   if (!window.db) return;
   const { data: { session } } = await window.db.auth.getSession();
@@ -53,17 +54,15 @@ async function redirectIfLoggedIn() {
   const { data: profile } = await window.db
     .from('profiles').select('roles, role').eq('id', session.user.id).single();
   const roles = profile?.roles?.length ? profile.roles : [profile?.role].filter(Boolean);
-  if (roles.includes('admin') || roles.includes('super-admin')) window.location.href = DASHBOARD;
+  if (roles.includes(PORTAL_ROLE)) window.location.href = DASHBOARD;
 }
 
-// No token required — account is created as a plain user.
-// A Super Admin must then assign the admin role via the super-admin panel.
 async function signUp(email, password, firstName, lastName) {
   const { data, error } = await window.db.auth.signUp({
     email, password,
     options: {
       emailRedirectTo: window.location.origin + '/dashboard.html',
-      data: { first_name: firstName, last_name: lastName },
+      data: { role: PORTAL_ROLE, first_name: firstName, last_name: lastName },
     },
   });
   if (error) return { error: error.message };

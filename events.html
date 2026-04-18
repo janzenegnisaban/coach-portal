@@ -3,32 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Events — KaliArena Admin</title>
+  <title>Events — KaliArena Coach</title>
   <link rel="icon" href="logo.png">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
   <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
-
-  <!-- Approve/Reject Dialog -->
-  <div class="dialog-overlay hidden" id="review-dialog">
-    <div class="dialog">
-      <div class="dialog-title" id="review-title">Review Event</div>
-      <div class="dialog-description" id="review-desc"></div>
-      <input type="hidden" id="review-event-id">
-      <div id="reject-reason-wrap" class="hidden">
-        <div class="form-group">
-          <label class="form-label">Rejection reason (optional)</label>
-          <textarea id="reject-reason" class="form-input" placeholder="Explain why this event is rejected…"></textarea>
-        </div>
-      </div>
-      <div class="dialog-footer">
-        <button class="btn btn-secondary" onclick="closeDialog('review-dialog')">Cancel</button>
-        <button class="btn btn-destructive btn-sm" id="reject-btn" onclick="submitReject()"><i data-lucide="x-circle"></i> Reject</button>
-        <button class="btn btn-primary btn-sm" id="approve-btn" onclick="submitApprove()"><i data-lucide="check-circle"></i> Approve</button>
-      </div>
-    </div>
-  </div>
 
   <div class="app-shell hidden" id="app-shell">
     <aside class="sidebar">
@@ -51,35 +31,18 @@
           <div class="page-header">
             <div class="page-header-text">
               <h1 class="page-title">Events</h1>
-              <p class="page-subtitle">All competitions — including organizer-submitted events awaiting approval.</p>
+              <p class="page-subtitle">Browse and join organizer-created competitions.</p>
             </div>
           </div>
 
-          <div class="flex gap-2 mb-4 flex-wrap" id="filter-tabs">
-            <button class="btn btn-primary btn-sm"   data-f="all"      onclick="setFilter('all',this)">All</button>
-            <button class="btn btn-secondary btn-sm" data-f="pending"  onclick="setFilter('pending',this)">Pending Approval</button>
-            <button class="btn btn-secondary btn-sm" data-f="approved" onclick="setFilter('approved',this)">Approved</button>
-            <button class="btn btn-secondary btn-sm" data-f="rejected" onclick="setFilter('rejected',this)">Rejected</button>
+          <div class="section-title" style="margin-bottom:.75rem;"><i data-lucide="check-circle"></i> My Registrations</div>
+          <div id="my-events" style="margin-bottom:2rem;">
+            <div class="text-sm text-muted">Loading…</div>
           </div>
 
-          <div class="table-wrap">
-            <div class="table-toolbar">
-              <div class="search-input-wrap">
-                <i data-lucide="search"></i>
-                <input type="text" id="search" class="form-input search-input" placeholder="Search events…" oninput="filterList(this.value)">
-              </div>
-              <span class="text-sm text-muted" id="event-count"></span>
-            </div>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr><th>Event</th><th>Type</th><th>Start Date</th><th>Status</th><th>Approval</th><th></th></tr>
-                </thead>
-                <tbody id="events-tbody">
-                  <tr><td colspan="6" class="table-empty">Loading…</td></tr>
-                </tbody>
-              </table>
-            </div>
+          <div class="section-title" style="margin-bottom:.75rem;"><i data-lucide="calendar-days"></i> Available Events</div>
+          <div id="available-events">
+            <div class="text-sm text-muted">Loading…</div>
           </div>
         </div>
       </main>
@@ -97,14 +60,13 @@
   <script src="js/nav.js"></script>
   <script>
     const PAGE = 'events.html';
-    let allEvents = [];
-    let currentFilter = 'all';
-    let adminId;
+    let userId;
+    let registeredIds = new Set();
 
     async function init() {
       const ctx = await requireRole();
       if (!ctx) return;
-      adminId = ctx.session.user.id;
+      userId = ctx.session.user.id;
       renderNav(PAGE);
       setHeaderUser(ctx.profile);
       await loadEvents();
@@ -112,104 +74,81 @@
       refreshIcons();
     }
 
-    function setFilter(f, btn) {
-      currentFilter = f;
-      document.querySelectorAll('#filter-tabs button').forEach(b => {
-        b.className = b === btn ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
-      });
-      renderEvents();
-    }
-
     async function loadEvents() {
-      const { data } = await window.db
-        .from('competitions')
-        .select('*, profiles!coach_id(first_name, last_name, email)')
-        .order('created_at', { ascending: false });
-      allEvents = data || [];
-      renderEvents();
-    }
+      const [regsRes, eventsRes] = await Promise.all([
+        window.db.from('competition_registrations').select('competition_id, competitions(id, name, status, start_date, end_date, location)').eq('coach_id', userId),
+        window.db.from('competitions').select('*').eq('admin_approval_status', 'approved').eq('is_public', true).order('start_date'),
+      ]);
 
-    function renderEvents() {
-      let filtered = allEvents;
-      if (currentFilter !== 'all') {
-        filtered = allEvents.filter(e => (e.admin_approval_status || 'approved') === currentFilter);
+      const regs = regsRes.data || [];
+      registeredIds = new Set(regs.map(r => r.competition_id));
+
+      // My registrations
+      const myEl = document.getElementById('my-events');
+      if (regs.length === 0) {
+        myEl.innerHTML = `<div class="empty-state"><i data-lucide="calendar-days"></i><h3>Not registered yet</h3><p>Join events from the list below.</p></div>`;
+      } else {
+        myEl.innerHTML = `<div class="card"><div class="card-content" style="padding:.75rem;">` +
+          regs.map(r => {
+            const ev = r.competitions;
+            return ev ? `
+              <div class="flex items-center gap-3" style="padding:.75rem;border-bottom:1px solid var(--border);">
+                <div class="stat-icon tile-emerald" style="width:2rem;height:2rem;border-radius:.5rem;flex-shrink:0;"><i data-lucide="check-circle" style="width:.875rem;height:.875rem;"></i></div>
+                <div class="flex-1 truncate">
+                  <div class="font-medium text-sm truncate">${escHtml(ev.name)}</div>
+                  <div class="text-xs text-muted">${ev.location ? escHtml(ev.location) + ' · ' : ''}${formatDate(ev.start_date)}</div>
+                </div>
+                ${statusBadge(ev.status)}
+              </div>
+            ` : '';
+          }).join('') + `</div></div>`;
       }
-      const q = document.getElementById('search').value.toLowerCase();
-      if (q) filtered = filtered.filter(e => e.name?.toLowerCase().includes(q));
 
-      document.getElementById('event-count').textContent = `${filtered.length} event${filtered.length !== 1 ? 's' : ''}`;
-
-      if (filtered.length === 0) {
-        document.getElementById('events-tbody').innerHTML = `<tr><td colspan="6" class="table-empty">No events found.</td></tr>`;
-        return;
+      // Available events
+      const events = (eventsRes.data || []).filter(e => !registeredIds.has(e.id));
+      const availEl = document.getElementById('available-events');
+      if (events.length === 0) {
+        availEl.innerHTML = `<div class="empty-state"><i data-lucide="calendar-days"></i><h3>No available events</h3><p>No open competitions to join right now.</p></div>`;
+      } else {
+        availEl.innerHTML = `<div style="display:grid;gap:.75rem;">` +
+          events.map(ev => `
+            <div class="card">
+              <div class="card-content" style="padding:1rem;">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="flex-1">
+                    <div class="font-semibold">${escHtml(ev.name)}</div>
+                    ${ev.description ? `<div class="text-sm text-muted mt-1">${escHtml(ev.description)}</div>` : ''}
+                    <div class="flex gap-3 text-xs text-muted mt-2 flex-wrap">
+                      ${ev.location ? `<span><i data-lucide="map-pin" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> ${escHtml(ev.location)}</span>` : ''}
+                      <span><i data-lucide="calendar" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> ${formatDate(ev.start_date)}${ev.end_date ? ' – ' + formatDate(ev.end_date) : ''}</span>
+                      ${ev.registration_deadline ? `<span>Deadline: ${formatDate(ev.registration_deadline)}</span>` : ''}
+                    </div>
+                  </div>
+                  <button class="btn btn-primary btn-sm" onclick="joinEvent('${ev.id}', this)">
+                    <i data-lucide="plus"></i> Join
+                  </button>
+                </div>
+              </div>
+            </div>
+          `).join('') + `</div>`;
       }
-
-      document.getElementById('events-tbody').innerHTML = filtered.map(ev => {
-        const approval = ev.admin_approval_status || (ev.organizer_id ? 'pending' : 'approved');
-        return `
-          <tr>
-            <td>
-              <div class="font-medium">${escHtml(ev.name)}</div>
-              <div class="text-xs text-muted">${ev.location ? escHtml(ev.location) : ''}</div>
-            </td>
-            <td class="text-sm">${escHtml(ev.competition_type || '—')}</td>
-            <td class="text-sm text-muted">${formatDate(ev.start_date)}</td>
-            <td>${statusBadge(ev.status)}</td>
-            <td>${ev.organizer_id ? statusBadge(approval) : '<span class="badge badge-gray">Coach event</span>'}</td>
-            <td>
-              ${ev.organizer_id && approval === 'pending' ? `
-                <button class="btn btn-primary btn-sm" onclick="openReview('${ev.id}','${escHtml(ev.name)}')">
-                  <i data-lucide="check-circle"></i> Review
-                </button>
-              ` : `<button class="btn btn-ghost btn-icon btn-sm" onclick="viewEvent('${ev.id}')"><i data-lucide="eye"></i></button>`}
-            </td>
-          </tr>
-        `;
-      }).join('');
       refreshIcons();
     }
 
-    function filterList(q) { renderEvents(); }
-
-    function openReview(id, name) {
-      document.getElementById('review-event-id').value = id;
-      document.getElementById('review-title').textContent = 'Review: ' + name;
-      document.getElementById('review-desc').textContent  = 'Approve this organizer event to make it visible to coaches, or reject it with an optional reason.';
-      document.getElementById('reject-reason-wrap').classList.add('hidden');
-      document.getElementById('reject-reason').value = '';
-      openDialog('review-dialog');
-    }
-
-    document.getElementById('reject-btn').addEventListener('click', () => {
-      document.getElementById('reject-reason-wrap').classList.toggle('hidden');
-    });
-
-    async function submitApprove() {
-      const id = document.getElementById('review-event-id').value;
-      const { error } = await window.db.from('competitions').update({
-        admin_approval_status: 'approved',
-        admin_reviewed_by: adminId,
-        admin_reviewed_at: new Date().toISOString(),
-      }).eq('id', id);
-      if (error) { showToast('Failed: ' + error.message, 'error'); return; }
-      showToast('Event approved — now visible to coaches.', 'success');
-      closeDialog('review-dialog');
-      loadEvents();
-    }
-
-    async function submitReject() {
-      const id     = document.getElementById('review-event-id').value;
-      const reason = document.getElementById('reject-reason').value;
-      const { error } = await window.db.from('competitions').update({
-        admin_approval_status: 'rejected',
-        rejection_reason: reason || null,
-        admin_reviewed_by: adminId,
-        admin_reviewed_at: new Date().toISOString(),
-      }).eq('id', id);
-      if (error) { showToast('Failed: ' + error.message, 'error'); return; }
-      showToast('Event rejected.', 'info');
-      closeDialog('review-dialog');
-      loadEvents();
+    async function joinEvent(eventId, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Joining…';
+      const { error } = await window.db.from('competition_registrations').insert({ competition_id: eventId, coach_id: userId, status: 'registered' });
+      if (error) {
+        showToast(error.message || 'Failed to join event', 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="plus"></i> Join';
+        refreshIcons();
+        return;
+      }
+      showToast('Successfully joined event!', 'success');
+      await loadEvents();
+      refreshIcons();
     }
 
     init();
