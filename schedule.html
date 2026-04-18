@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schedule — KaliArena Coach</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Schedule</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Match Schedule</h1>
+              <p class="page-subtitle">Upcoming approved match notifications from organizers.</p>
+            </div>
+          </div>
+
+          <div id="schedule-list">
+            <div class="text-sm text-muted">Loading schedule…</div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'schedule.html';
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      renderNav(PAGE);
+      setHeaderUser(ctx.profile);
+
+      const { data: notifs } = await window.db
+        .from('match_notifications')
+        .select('*, competitions(name)')
+        .eq('status', 'approved')
+        .order('scheduled_at', { ascending: true });
+
+      const list = notifs || [];
+      const container = document.getElementById('schedule-list');
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <i data-lucide="calendar"></i>
+            <h3>No scheduled matches</h3>
+            <p>No approved match notifications yet. Check back later.</p>
+          </div>`;
+        refreshIcons();
+      } else {
+        // Group by date
+        const grouped = {};
+        list.forEach(n => {
+          const key = n.scheduled_at ? new Date(n.scheduled_at).toDateString() : 'TBD';
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(n);
+        });
+
+        container.innerHTML = Object.entries(grouped).map(([date, items]) => `
+          <div style="margin-bottom:1.5rem;">
+            <div class="section-title"><i data-lucide="calendar"></i> ${date}</div>
+            <div class="card">
+              <div class="card-content" style="padding:.75rem;">
+                ${items.map(n => `
+                  <div class="flex items-center gap-3" style="padding:.75rem;border-bottom:1px solid var(--border);">
+                    <div class="stat-icon tile-primary" style="width:2.5rem;height:2.5rem;border-radius:.75rem;flex-shrink:0;">
+                      <i data-lucide="swords"></i>
+                    </div>
+                    <div class="flex-1">
+                      <div class="font-medium">${escHtml(n.title)}</div>
+                      <div class="text-sm text-muted flex gap-3 mt-1 flex-wrap">
+                        ${n.court ? `<span><i data-lucide="map-pin" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> Court ${escHtml(n.court)}</span>` : ''}
+                        ${n.scheduled_at ? `<span><i data-lucide="clock" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> ${formatDateTime(n.scheduled_at)}</span>` : ''}
+                        ${n.competitions?.name ? `<span><i data-lucide="trophy" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> ${escHtml(n.competitions.name)}</span>` : ''}
+                      </div>
+                    </div>
+                    <span class="badge badge-emerald">Approved</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `).join('');
+        refreshIcons();
+      }
+
+      showApp();
+      refreshIcons();
+    }
+
+    init();
+  </script>
+</body>
+</html>

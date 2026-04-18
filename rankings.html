@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rankings — KaliArena Coach</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Rankings</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Rankings</h1>
+              <p class="page-subtitle">Overall standings across all registered teams.</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <div class="table-toolbar">
+              <span class="font-medium text-sm" id="rank-count"></span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Team</th>
+                    <th>Coach</th>
+                    <th>Players</th>
+                    <th>Matches</th>
+                    <th>Wins</th>
+                    <th>Losses</th>
+                    <th>Win %</th>
+                  </tr>
+                </thead>
+                <tbody id="rankings-tbody">
+                  <tr><td colspan="8" class="table-empty">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'rankings.html';
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      const myUserId = ctx.session.user.id;
+      renderNav(PAGE);
+      setHeaderUser(ctx.profile);
+
+      const { data: teams } = await window.db
+        .from('teams')
+        .select('id, name, wins, losses, matches_count, players_count, coach_id, profiles(first_name, last_name, email)')
+        .order('wins', { ascending: false });
+
+      const all = teams || [];
+      document.getElementById('rank-count').textContent = `${all.length} team${all.length !== 1 ? 's' : ''}`;
+
+      if (all.length === 0) {
+        document.getElementById('rankings-tbody').innerHTML = `<tr><td colspan="8" class="table-empty">No teams ranked yet.</td></tr>`;
+      } else {
+        document.getElementById('rankings-tbody').innerHTML = all.map((t, i) => {
+          const isMe = t.coach_id === myUserId;
+          const coach = t.profiles;
+          const coachName = coach?.first_name ? `${coach.first_name} ${coach.last_name || ''}`.trim() : coach?.email || '—';
+          const winPct = pct(t.wins, t.matches_count);
+          return `
+            <tr style="${isMe ? 'background:oklch(0.5 0.19 25 / 0.06);' : ''}">
+              <td>
+                ${i === 0 ? '<span class="badge badge-amber">🥇 1</span>' :
+                  i === 1 ? '<span class="badge badge-gray">🥈 2</span>' :
+                  i === 2 ? '<span class="badge badge-primary">🥉 3</span>' :
+                  `<span class="text-muted">${i + 1}</span>`}
+              </td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <div class="avatar avatar-sm" style="${isMe ? 'background:var(--primary);' : ''}">${getInitials(t.name)}</div>
+                  <span class="font-medium">${escHtml(t.name)}${isMe ? ' <span class="badge badge-primary" style="font-size:.7rem;">You</span>' : ''}</span>
+                </div>
+              </td>
+              <td class="text-sm text-muted">${escHtml(coachName)}</td>
+              <td>${t.players_count || 0}</td>
+              <td>${t.matches_count || 0}</td>
+              <td class="font-medium" style="color:#059669">${t.wins || 0}</td>
+              <td class="font-medium" style="color:#dc2626">${t.losses || 0}</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <div style="width:3rem;height:.375rem;background:var(--muted);border-radius:9999px;overflow:hidden;">
+                    <div style="width:${winPct}%;height:100%;background:${winPct >= 60 ? '#059669' : winPct >= 40 ? '#d97706' : '#dc2626'};"></div>
+                  </div>
+                  <span class="text-sm">${winPct}%</span>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      showApp();
+      refreshIcons();
+    }
+
+    init();
+  </script>
+</body>
+</html>

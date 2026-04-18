@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documents — KaliArena Coach</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Documents</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap" style="max-width:48rem;">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Documents</h1>
+              <p class="page-subtitle">Required documents for competition registration. Upload each document to complete your team profile.</p>
+            </div>
+          </div>
+
+          <div id="docs-list">
+            <div class="text-sm text-muted">Loading…</div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'documents.html';
+
+    // Required document checklist (customize as needed)
+    const REQUIRED_DOCS = [
+      { key: 'birth_certificate',  label: 'Birth Certificate',           desc: 'Official PSA birth certificate for each player' },
+      { key: 'medical_clearance',  label: 'Medical Clearance',           desc: 'Medical clearance issued within 3 months' },
+      { key: 'parental_consent',   label: 'Parental Consent (Minors)',    desc: 'Required for players under 18' },
+      { key: 'school_id',          label: 'School / Company ID',         desc: 'Valid ID for player eligibility verification' },
+      { key: 'registration_form',  label: 'Registration Form',           desc: 'Completed and signed team registration form' },
+    ];
+
+    let uploadedDocs = {};
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      renderNav(PAGE);
+      setHeaderUser(ctx.profile);
+
+      // Load existing documents from DB if table exists
+      const { data: dbDocs } = await window.db
+        .from('documents')
+        .select('*')
+        .eq('team_id', ctx.session.user.id); // approximation — adjust to your schema
+
+      (dbDocs || []).forEach(d => { uploadedDocs[d.doc_type] = d; });
+
+      renderDocs();
+      showApp();
+      refreshIcons();
+    }
+
+    function renderDocs() {
+      const uploaded = Object.keys(uploadedDocs).length;
+      document.getElementById('docs-list').innerHTML = `
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-sm text-muted">${uploaded} of ${REQUIRED_DOCS.length} documents uploaded</span>
+          <div style="width:8rem;height:.375rem;background:var(--muted);border-radius:9999px;overflow:hidden;">
+            <div style="width:${Math.round((uploaded/REQUIRED_DOCS.length)*100)}%;height:100%;background:var(--primary);transition:width .3s;"></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.75rem;">
+          ${REQUIRED_DOCS.map(doc => {
+            const uploaded = uploadedDocs[doc.key];
+            return `
+              <div class="card">
+                <div class="card-content" style="padding:1rem;">
+                  <div class="flex items-start gap-3">
+                    <div class="stat-icon ${uploaded ? 'tile-emerald' : 'tile-amber'}" style="width:2.25rem;height:2.25rem;border-radius:.625rem;flex-shrink:0;margin-top:.125rem;">
+                      <i data-lucide="${uploaded ? 'check-circle' : 'file-text'}" style="width:1rem;height:1rem;"></i>
+                    </div>
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold text-sm">${escHtml(doc.label)}</span>
+                        ${uploaded ? '<span class="badge badge-emerald">Uploaded</span>' : '<span class="badge badge-amber">Pending</span>'}
+                      </div>
+                      <p class="text-xs text-muted mt-1">${escHtml(doc.desc)}</p>
+                      ${uploaded && uploaded.url ? `<a href="${escHtml(uploaded.url)}" target="_blank" class="text-xs text-primary mt-1 flex items-center gap-1"><i data-lucide="external-link" style="width:.75rem;height:.75rem;"></i> View document</a>` : ''}
+                    </div>
+                    <div>
+                      <label class="btn btn-secondary btn-sm" style="cursor:pointer;">
+                        <i data-lucide="upload"></i> ${uploaded ? 'Replace' : 'Upload'}
+                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleUpload('${doc.key}', this)" data-key="${doc.key}">
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+      refreshIcons();
+    }
+
+    async function handleUpload(key, input) {
+      const file = input.files[0];
+      if (!file) return;
+      showToast(`Uploading ${file.name}…`, 'info');
+
+      // Upload to Supabase Storage
+      const ext = file.name.split('.').pop();
+      const path = `documents/${key}_${Date.now()}.${ext}`;
+      const { data: storageData, error: storageError } = await window.db.storage.from('documents').upload(path, file);
+
+      if (storageError) {
+        showToast('Upload failed: ' + storageError.message, 'error');
+        return;
+      }
+
+      const { data: { publicUrl } } = window.db.storage.from('documents').getPublicUrl(path);
+      uploadedDocs[key] = { doc_type: key, url: publicUrl };
+      showToast('Document uploaded!', 'success');
+      renderDocs();
+    }
+
+    init();
+  </script>
+</body>
+</html>

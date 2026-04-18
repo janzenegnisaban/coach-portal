@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — KaliArena Coach</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Settings</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap" style="max-width:48rem;">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Settings</h1>
+              <p class="page-subtitle">Manage your profile and team settings.</p>
+            </div>
+          </div>
+
+          <!-- Profile -->
+          <div class="card" style="margin-bottom:1.5rem;">
+            <div class="card-header"><div class="card-title"><i data-lucide="user"></i> Profile</div></div>
+            <div class="card-content">
+              <div id="profile-success" class="alert alert-success hidden" style="margin-bottom:1rem;"></div>
+              <div id="profile-error"   class="alert alert-error hidden"   style="margin-bottom:1rem;"></div>
+              <form id="profile-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label">First Name</label>
+                    <input type="text" id="prof-first" class="form-input" placeholder="First name">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Last Name</label>
+                    <input type="text" id="prof-last" class="form-input" placeholder="Last name">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Email</label>
+                  <input type="email" id="prof-email" class="form-input" disabled style="opacity:.6;cursor:not-allowed;">
+                  <p class="form-hint">Email cannot be changed here</p>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Phone</label>
+                  <input type="tel" id="prof-phone" class="form-input" placeholder="+63 900 000 0000">
+                </div>
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                  <label class="form-label">Bio</label>
+                  <textarea id="prof-bio" class="form-input" placeholder="Tell us about yourself…"></textarea>
+                </div>
+                <button type="submit" id="profile-save" class="btn btn-primary">Save Profile</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Team -->
+          <div class="card" style="margin-bottom:1.5rem;">
+            <div class="card-header"><div class="card-title"><i data-lucide="shield"></i> Team</div></div>
+            <div class="card-content">
+              <div id="team-success" class="alert alert-success hidden" style="margin-bottom:1rem;"></div>
+              <div id="team-error"   class="alert alert-error hidden"   style="margin-bottom:1rem;"></div>
+              <form id="team-form">
+                <input type="hidden" id="team-id">
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                  <label class="form-label">Team Name</label>
+                  <input type="text" id="team-name" class="form-input" placeholder="My Team Name" required>
+                </div>
+                <button type="submit" id="team-save" class="btn btn-primary">Save Team</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Change Password -->
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i data-lucide="lock"></i> Change Password</div></div>
+            <div class="card-content">
+              <div id="pw-success" class="alert alert-success hidden" style="margin-bottom:1rem;"></div>
+              <div id="pw-error"   class="alert alert-error hidden"   style="margin-bottom:1rem;"></div>
+              <form id="pw-form">
+                <div class="form-group">
+                  <label class="form-label">New Password</label>
+                  <input type="password" id="new-pw" class="form-input" placeholder="Min. 8 characters" minlength="8" required>
+                </div>
+                <div class="form-group" style="margin-bottom:1.25rem;">
+                  <label class="form-label">Confirm New Password</label>
+                  <input type="password" id="confirm-pw" class="form-input" placeholder="Confirm password" required>
+                </div>
+                <button type="submit" id="pw-save" class="btn btn-primary">Update Password</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'settings.html';
+    let userId;
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      const { session, profile } = ctx;
+      userId = session.user.id;
+
+      renderNav(PAGE);
+      setHeaderUser(profile);
+
+      // Populate profile form
+      document.getElementById('prof-first').value = profile.first_name || '';
+      document.getElementById('prof-last').value  = profile.last_name  || '';
+      document.getElementById('prof-email').value = profile.email || session.user.email || '';
+      document.getElementById('prof-phone').value = profile.phone || '';
+      document.getElementById('prof-bio').value   = profile.bio   || '';
+
+      // Load team
+      const { data: teams } = await window.db.from('teams').select('id, name').eq('coach_id', userId).limit(1);
+      const team = teams?.[0];
+      if (team) {
+        document.getElementById('team-id').value   = team.id;
+        document.getElementById('team-name').value = team.name;
+      }
+
+      showApp();
+      refreshIcons();
+    }
+
+    document.getElementById('profile-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('profile-save');
+      const suc = document.getElementById('profile-success');
+      const err = document.getElementById('profile-error');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      suc.classList.add('hidden'); err.classList.add('hidden');
+
+      const { error } = await window.db.from('profiles').update({
+        first_name: document.getElementById('prof-first').value,
+        last_name:  document.getElementById('prof-last').value,
+        phone:      document.getElementById('prof-phone').value,
+        bio:        document.getElementById('prof-bio').value,
+      }).eq('id', userId);
+
+      btn.disabled = false; btn.textContent = 'Save Profile';
+      if (error) { err.textContent = error.message; err.classList.remove('hidden'); }
+      else { suc.textContent = 'Profile updated successfully.'; suc.classList.remove('hidden'); }
+    });
+
+    document.getElementById('team-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('team-save');
+      const suc = document.getElementById('team-success');
+      const err = document.getElementById('team-error');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      suc.classList.add('hidden'); err.classList.add('hidden');
+
+      const teamId = document.getElementById('team-id').value;
+      const teamName = document.getElementById('team-name').value;
+      let error;
+
+      if (teamId) {
+        ({ error } = await window.db.from('teams').update({ name: teamName }).eq('id', teamId).eq('coach_id', userId));
+      } else {
+        const res = await window.db.from('teams').insert({ name: teamName, coach_id: userId }).select('id').single();
+        error = res.error;
+        if (!error) document.getElementById('team-id').value = res.data.id;
+      }
+
+      btn.disabled = false; btn.textContent = 'Save Team';
+      if (error) { err.textContent = error.message; err.classList.remove('hidden'); }
+      else { suc.textContent = 'Team saved successfully.'; suc.classList.remove('hidden'); }
+    });
+
+    document.getElementById('pw-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('pw-save');
+      const suc = document.getElementById('pw-success');
+      const err = document.getElementById('pw-error');
+      const newPw  = document.getElementById('new-pw').value;
+      const confPw = document.getElementById('confirm-pw').value;
+
+      if (newPw !== confPw) { err.textContent = 'Passwords do not match.'; err.classList.remove('hidden'); return; }
+
+      btn.disabled = true; btn.textContent = 'Updating…';
+      suc.classList.add('hidden'); err.classList.add('hidden');
+
+      const { error } = await window.db.auth.updateUser({ password: newPw });
+
+      btn.disabled = false; btn.textContent = 'Update Password';
+      if (error) { err.textContent = error.message; err.classList.remove('hidden'); }
+      else { suc.textContent = 'Password updated successfully.'; suc.classList.remove('hidden'); document.getElementById('pw-form').reset(); }
+    });
+
+    init();
+  </script>
+</body>
+</html>

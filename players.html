@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Players — KaliArena Coach</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
+
+  <!-- Add/Edit Dialog -->
+  <div class="dialog-overlay hidden" id="player-dialog">
+    <div class="dialog" style="max-width:36rem;">
+      <div class="dialog-title" id="dialog-title">Add Player</div>
+      <div class="dialog-description">Fill in the player details below.</div>
+      <form id="player-form">
+        <input type="hidden" id="player-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Full Name *</label>
+            <input type="text" id="p-name" class="form-input" placeholder="Player name" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Age</label>
+            <input type="number" id="p-age" class="form-input" placeholder="Age" min="5" max="60">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Belt Level</label>
+            <select id="p-belt" class="form-select">
+              <option value="">Select belt</option>
+              <option>White</option><option>Yellow</option><option>Orange</option>
+              <option>Green</option><option>Blue</option><option>Red</option>
+              <option>Brown</option><option>Black</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <input type="text" id="p-category" class="form-input" placeholder="e.g. Junior, Senior">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Gender</label>
+            <select id="p-gender" class="form-select">
+              <option value="">Select</option>
+              <option>Male</option><option>Female</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Weight (kg)</label>
+            <input type="number" id="p-weight" class="form-input" placeholder="Weight" min="20" max="200" step="0.1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Skill Level</label>
+            <select id="p-skill" class="form-select">
+              <option value="">Select</option>
+              <option>Beginner</option><option>Intermediate</option><option>Advanced</option><option>Elite</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Specialty</label>
+            <input type="text" id="p-specialty" class="form-input" placeholder="e.g. Sparring">
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeDialog('player-dialog')">Cancel</button>
+          <button type="submit" id="player-submit" class="btn btn-primary">Save Player</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-shell hidden" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-badge-area" id="sidebar-badge"></div>
+      <nav class="sidebar-nav" id="sidebar-nav"></nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="portal-header">
+        <div class="header-left"><div class="header-title">Players</div></div>
+        <div class="header-right">
+          <span class="header-user-name" id="header-user-name"></span>
+          <div class="header-avatar" id="header-avatar">?</div>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="page-wrap">
+          <div class="page-header">
+            <div class="page-header-text">
+              <h1 class="page-title">Players</h1>
+              <p class="page-subtitle">Manage your team's roster.</p>
+            </div>
+            <button class="btn btn-primary" onclick="openAddDialog()"><i data-lucide="plus"></i> Add Player</button>
+          </div>
+
+          <div class="table-wrap">
+            <div class="table-toolbar">
+              <div class="search-input-wrap">
+                <i data-lucide="search"></i>
+                <input type="text" id="search" class="form-input search-input" placeholder="Search players…" oninput="filterPlayers(this.value)">
+              </div>
+              <span class="text-sm text-muted" id="player-count"></span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Belt</th>
+                    <th>Category</th>
+                    <th>Age</th>
+                    <th>Matches</th>
+                    <th>W / L</th>
+                    <th>Win %</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="players-tbody">
+                  <tr><td colspan="8" class="table-empty">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <nav class="mobile-nav" id="mobile-nav"></nav>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const PAGE = 'players.html';
+    let allPlayers = [];
+    let currentUserId = null;
+    let currentTeamId = null;
+
+    async function init() {
+      const ctx = await requireRole();
+      if (!ctx) return;
+      const { session, profile } = ctx;
+      currentUserId = session.user.id;
+
+      renderNav(PAGE);
+      setHeaderUser(profile);
+
+      const { data: teams } = await window.db.from('teams').select('id').eq('coach_id', currentUserId).limit(1);
+      currentTeamId = teams?.[0]?.id || null;
+
+      await loadPlayers();
+      showApp();
+      refreshIcons();
+    }
+
+    async function loadPlayers() {
+      const { data, error } = await window.db.from('players').select('*').eq('coach_id', currentUserId).order('name');
+      if (error) { showToast('Failed to load players', 'error'); return; }
+      allPlayers = data || [];
+      renderPlayers(allPlayers);
+    }
+
+    function renderPlayers(players) {
+      document.getElementById('player-count').textContent = `${players.length} player${players.length !== 1 ? 's' : ''}`;
+      if (players.length === 0) {
+        document.getElementById('players-tbody').innerHTML = `<tr><td colspan="8" class="table-empty"><div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;"><i data-lucide="users" style="width:2rem;height:2rem;opacity:.35;"></i>No players found. Add your first player.</div></td></tr>`;
+        refreshIcons(); return;
+      }
+      document.getElementById('players-tbody').innerHTML = players.map(p => `
+        <tr>
+          <td>
+            <div class="flex items-center gap-2">
+              <div class="avatar avatar-sm">${getInitials(p.name)}</div>
+              <span class="font-medium">${escHtml(p.name)}</span>
+            </div>
+          </td>
+          <td>${p.belt_level ? `<span class="badge badge-gray">${escHtml(p.belt_level)}</span>` : '—'}</td>
+          <td>${escHtml(p.category || '—')}</td>
+          <td>${p.age || '—'}</td>
+          <td>${p.matches || 0}</td>
+          <td>${p.wins || 0} / ${p.losses || 0}</td>
+          <td>${pct(p.wins, p.matches)}%</td>
+          <td>
+            <div class="flex gap-1">
+              <button class="btn btn-ghost btn-icon btn-sm" onclick="editPlayer('${p.id}')" title="Edit"><i data-lucide="pencil"></i></button>
+              <button class="btn btn-ghost btn-icon btn-sm" style="color:var(--destructive)" onclick="deletePlayer('${p.id}', '${escHtml(p.name)}')" title="Delete"><i data-lucide="trash-2"></i></button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+      refreshIcons();
+    }
+
+    function filterPlayers(q) {
+      const filtered = q ? allPlayers.filter(p => p.name?.toLowerCase().includes(q.toLowerCase()) || p.category?.toLowerCase().includes(q.toLowerCase())) : allPlayers;
+      renderPlayers(filtered);
+    }
+
+    function openAddDialog() {
+      document.getElementById('dialog-title').textContent = 'Add Player';
+      document.getElementById('player-id').value = '';
+      document.getElementById('player-form').reset();
+      openDialog('player-dialog');
+    }
+
+    function editPlayer(id) {
+      const p = allPlayers.find(x => x.id === id);
+      if (!p) return;
+      document.getElementById('dialog-title').textContent = 'Edit Player';
+      document.getElementById('player-id').value = p.id;
+      document.getElementById('p-name').value     = p.name || '';
+      document.getElementById('p-age').value      = p.age || '';
+      document.getElementById('p-belt').value     = p.belt_level || '';
+      document.getElementById('p-category').value = p.category || '';
+      document.getElementById('p-gender').value   = p.gender || '';
+      document.getElementById('p-weight').value   = p.weight || '';
+      document.getElementById('p-skill').value    = p.skill_level || '';
+      document.getElementById('p-specialty').value= p.specialty || '';
+      openDialog('player-dialog');
+    }
+
+    async function deletePlayer(id, name) {
+      if (!confirmAction(`Delete player "${name}"? This cannot be undone.`)) return;
+      const { error } = await window.db.from('players').delete().eq('id', id).eq('coach_id', currentUserId);
+      if (error) { showToast('Failed to delete player', 'error'); return; }
+      showToast('Player deleted', 'success');
+      await loadPlayers();
+    }
+
+    document.getElementById('player-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('player-submit');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+
+      const id = document.getElementById('player-id').value;
+      const payload = {
+        name:        document.getElementById('p-name').value,
+        age:         parseInt(document.getElementById('p-age').value) || null,
+        belt_level:  document.getElementById('p-belt').value || null,
+        category:    document.getElementById('p-category').value || null,
+        gender:      document.getElementById('p-gender').value || null,
+        weight:      parseFloat(document.getElementById('p-weight').value) || null,
+        skill_level: document.getElementById('p-skill').value || null,
+        specialty:   document.getElementById('p-specialty').value || null,
+        coach_id:    currentUserId,
+        team_id:     currentTeamId,
+      };
+
+      let error;
+      if (id) {
+        ({ error } = await window.db.from('players').update(payload).eq('id', id).eq('coach_id', currentUserId));
+      } else {
+        ({ error } = await window.db.from('players').insert(payload));
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Save Player';
+
+      if (error) { showToast(error.message || 'Failed to save player', 'error'); return; }
+      showToast(id ? 'Player updated' : 'Player added', 'success');
+      closeDialog('player-dialog');
+      await loadPlayers();
+    });
+
+    init();
+  </script>
+</body>
+</html>
