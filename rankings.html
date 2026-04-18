@@ -35,6 +35,17 @@
             </div>
           </div>
 
+          <!-- Medal Standings from Events -->
+          <div class="section-title" style="margin-bottom:.75rem;">
+            <i data-lucide="trophy"></i> Medal Standings
+          </div>
+          <div id="medal-standings" style="margin-bottom:2rem;">
+            <div class="text-sm text-muted">Loading…</div>
+          </div>
+
+          <div class="section-title" style="margin-bottom:.75rem;">
+            <i data-lucide="bar-chart-2"></i> Team Records
+          </div>
           <div class="table-wrap">
             <div class="table-toolbar">
               <span class="font-medium text-sm" id="rank-count"></span>
@@ -82,6 +93,9 @@
       const myUserId = ctx.session.user.id;
       renderNav(PAGE);
       setHeaderUser(ctx.profile);
+
+      // Load medal standings
+      await loadMedalStandings(myUserId);
 
       const { data: teams } = await window.db
         .from('teams')
@@ -132,6 +146,86 @@
       }
 
       showApp();
+      refreshIcons();
+    }
+
+    async function loadMedalStandings(myUserId) {
+      const el = document.getElementById('medal-standings');
+
+      // Aggregate medals across all events per team
+      const { data } = await window.db
+        .from('team_event_standings')
+        .select(`
+          gold, silver, bronze, total_points,
+          teams(id, name, coach_id),
+          competitions(id, name, start_date)
+        `)
+        .order('total_points', { ascending: false });
+
+      const rows = data || [];
+      if (rows.length === 0) {
+        el.innerHTML = `<div class="empty-state" style="padding:1.5rem;"><i data-lucide="trophy"></i><h3>No medal standings yet</h3><p>Standings will appear after organizers publish event results.</p></div>`;
+        refreshIcons(); return;
+      }
+
+      // Aggregate by team across all events
+      const byTeam = {};
+      rows.forEach(r => {
+        const tid = r.teams?.id || 'unknown';
+        if (!byTeam[tid]) byTeam[tid] = { team: r.teams, gold:0, silver:0, bronze:0, pts:0, events: new Set() };
+        byTeam[tid].gold   += r.gold   || 0;
+        byTeam[tid].silver += r.silver || 0;
+        byTeam[tid].bronze += r.bronze || 0;
+        byTeam[tid].pts    += r.total_points || 0;
+        if (r.competitions?.name) byTeam[tid].events.add(r.competitions.name);
+      });
+
+      const sorted = Object.values(byTeam).sort((a, b) => b.pts - a.pts || b.gold - a.gold);
+
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-content" style="padding:0;">
+            <table style="width:100%;border-collapse:collapse;font-size:.875rem;">
+              <thead>
+                <tr style="background:var(--muted);">
+                  <th style="padding:.625rem 1rem;text-align:left;font-size:.8125rem;">#</th>
+                  <th style="padding:.625rem 1rem;text-align:left;font-size:.8125rem;">Team</th>
+                  <th style="padding:.625rem 1rem;text-align:center;font-size:.8125rem;">🥇 Gold</th>
+                  <th style="padding:.625rem 1rem;text-align:center;font-size:.8125rem;">🥈 Silver</th>
+                  <th style="padding:.625rem 1rem;text-align:center;font-size:.8125rem;">🥉 Bronze</th>
+                  <th style="padding:.625rem 1rem;text-align:center;font-size:.8125rem;">Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sorted.map((s, i) => {
+                  const isMe = s.team?.coach_id === myUserId;
+                  return `
+                    <tr style="${isMe ? 'background:oklch(0.5 0.19 25 / 0.06);' : ''}border-bottom:1px solid var(--border);">
+                      <td style="padding:.625rem 1rem;">
+                        ${i===0?'<span class="badge badge-amber">🥇 1</span>':
+                          i===1?'<span class="badge badge-gray">🥈 2</span>':
+                          i===2?'<span class="badge badge-primary">🥉 3</span>':
+                          `<span class="text-muted">${i+1}</span>`}
+                      </td>
+                      <td style="padding:.625rem 1rem;">
+                        <div class="flex items-center gap-2">
+                          <div class="avatar avatar-sm" style="${isMe?'background:var(--primary);':''}">${getInitials(s.team?.name||'?')}</div>
+                          <div>
+                            <div class="font-medium">${escHtml(s.team?.name||'—')}${isMe?' <span class="badge badge-primary" style="font-size:.7rem;">You</span>':''}</div>
+                            <div class="text-xs text-muted">${s.events.size} event${s.events.size!==1?'s':''}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style="padding:.625rem 1rem;text-align:center;font-weight:700;color:#92400e;">${s.gold}</td>
+                      <td style="padding:.625rem 1rem;text-align:center;font-weight:600;color:#52525b;">${s.silver}</td>
+                      <td style="padding:.625rem 1rem;text-align:center;font-weight:600;color:#78350f;">${s.bronze}</td>
+                      <td style="padding:.625rem 1rem;text-align:center;font-weight:700;">${s.pts}</td>
+                    </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
       refreshIcons();
     }
 

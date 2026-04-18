@@ -6,13 +6,90 @@
   <title>Events — KaliArena Coach</title>
   <link rel="icon" href="logo.png">
   <link rel="stylesheet" href="css/app.css">
+  <style>
+    .sport-chip {
+      display:inline-flex;align-items:center;gap:.3rem;
+      padding:.2rem .55rem;border-radius:9999px;font-size:.7rem;font-weight:600;
+      white-space:nowrap;
+    }
+    .sport-anyo-trad    { background:#ede9fe;color:#6d28d9; }
+    .sport-anyo-nontrad { background:#dbeafe;color:#1d4ed8; }
+    .sport-fc-padded    { background:#fef3c7;color:#92400e; }
+    .sport-fc-live      { background:#fee2e2;color:#991b1b; }
+
+    .player-row {
+      display:flex;align-items:center;gap:.75rem;
+      padding:.625rem .75rem;border-radius:.5rem;
+      border:1px solid var(--border);margin-bottom:.375rem;
+      cursor:pointer;transition:background .1s;
+    }
+    .player-row:hover { background:var(--accent); }
+    .player-row.disabled { opacity:.45;cursor:not-allowed;pointer-events:none; }
+    .player-row input[type=checkbox] { width:1rem;height:1rem;accent-color:var(--primary);flex-shrink:0; }
+    .player-row .player-info { flex:1;min-width:0; }
+    .player-row .player-name { font-size:.875rem;font-weight:500; }
+    .player-row .player-meta { font-size:.75rem;color:var(--muted-foreground); }
+
+    .reg-item {
+      display:flex;align-items:center;gap:.75rem;
+      padding:.75rem;border-bottom:1px solid var(--border);
+    }
+    .reg-item:last-child { border-bottom:none; }
+
+    #reg-no-players {
+      text-align:center;padding:1.5rem;color:var(--muted-foreground);font-size:.875rem;
+    }
+  </style>
 </head>
 <body>
   <div class="loading-overlay" id="loading-overlay"><div class="spinner"></div></div>
 
+  <!-- Register Players Dialog -->
+  <div class="dialog-overlay hidden" id="reg-dialog">
+    <div class="dialog" style="max-width:40rem;">
+      <div class="dialog-title">Register Players</div>
+      <p class="dialog-description" id="reg-event-name" style="font-weight:600;margin-bottom:.125rem;"></p>
+      <p class="dialog-description" style="margin-top:0;">Pick the division, sport type, then check the players you want to enter.</p>
+
+      <input type="hidden" id="reg-event-id">
+
+      <div class="form-row" style="margin-top:.875rem;">
+        <div class="form-group">
+          <label class="form-label">Division *</label>
+          <select id="reg-division" class="form-select" onchange="onDivisionChange()">
+            <option value="">Select division…</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sport Type *</label>
+          <select id="reg-sport-type" class="form-select">
+            <option value="">Select sport…</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="form-label" style="margin-bottom:.5rem;">Players
+        <span id="reg-player-count" style="font-weight:400;color:var(--muted-foreground);margin-left:.375rem;"></span>
+      </label>
+      <div id="reg-players-list" style="max-height:16rem;overflow-y:auto;border:1px solid var(--border);border-radius:.5rem;padding:.375rem;">
+        <div id="reg-no-players">Select a division to see eligible players.</div>
+      </div>
+
+      <div class="dialog-footer" style="margin-top:1rem;">
+        <button class="btn btn-secondary" onclick="closeDialog('reg-dialog')">Cancel</button>
+        <button class="btn btn-primary" id="reg-submit-btn" onclick="submitRegistrations()">
+          <i data-lucide="user-plus"></i> Register Selected
+        </button>
+      </div>
+    </div>
+  </div>
+
   <div class="app-shell hidden" id="app-shell">
     <aside class="sidebar">
-      <div class="sidebar-logo"><img src="logo.png" alt="KaliArena" style="height:2rem;width:auto;object-fit:contain;flex-shrink:0;"><span class="sidebar-logo-text">KaliArena</span></div>
+      <div class="sidebar-logo">
+        <img src="logo.png" alt="KaliArena" style="height:2rem;width:auto;object-fit:contain;flex-shrink:0;">
+        <span class="sidebar-logo-text">KaliArena</span>
+      </div>
       <div class="sidebar-badge-area" id="sidebar-badge"></div>
       <nav class="sidebar-nav" id="sidebar-nav"></nav>
     </aside>
@@ -31,16 +108,20 @@
           <div class="page-header">
             <div class="page-header-text">
               <h1 class="page-title">Events</h1>
-              <p class="page-subtitle">Browse and join organizer-created competitions.</p>
+              <p class="page-subtitle">Register your players for organizer-created competitions.</p>
             </div>
           </div>
 
-          <div class="section-title" style="margin-bottom:.75rem;"><i data-lucide="check-circle"></i> My Registrations</div>
-          <div id="my-events" style="margin-bottom:2rem;">
+          <div class="section-title" style="margin-bottom:.75rem;">
+            <i data-lucide="check-circle"></i> My Player Registrations
+          </div>
+          <div id="my-regs" style="margin-bottom:2rem;">
             <div class="text-sm text-muted">Loading…</div>
           </div>
 
-          <div class="section-title" style="margin-bottom:.75rem;"><i data-lucide="calendar-days"></i> Available Events</div>
+          <div class="section-title" style="margin-bottom:.75rem;">
+            <i data-lucide="calendar-days"></i> Available Events
+          </div>
           <div id="available-events">
             <div class="text-sm text-muted">Loading…</div>
           </div>
@@ -61,93 +142,370 @@
   <script>
     const PAGE = 'events.html';
     let userId;
-    let registeredIds = new Set();
+    let myPlayers   = [];
+    let dialogEvent = null; // { id, name, divisions[], sportTypes[] }
+    // playerRegistrations: Set of "competitionId|divisionId|sportType|playerId" for duplicate check
+    let registeredKeys = new Set();
 
+    const ALL_SPORT_TYPES = [
+      { value:'anyo-traditional',    label:'Anyo — Traditional' },
+      { value:'anyo-non-traditional', label:'Anyo — Non-Traditional' },
+      { value:'full-contact-padded',  label:'Full Contact — Padded' },
+      { value:'full-contact-livestick', label:'Full Contact — Live Stick' },
+    ];
+
+    function sportChipCls(st) {
+      if (st === 'anyo-traditional')     return 'sport-anyo-trad';
+      if (st === 'anyo-non-traditional') return 'sport-anyo-nontrad';
+      if (st === 'full-contact-padded')  return 'sport-fc-padded';
+      return 'sport-fc-live';
+    }
+    function sportLabel(st) {
+      return (ALL_SPORT_TYPES.find(s => s.value === st) || { label: st }).label;
+    }
+
+    function divisionLabel(d) {
+      const g   = d.gender === 'girls' ? 'Girls' : d.gender === 'mixed' ? 'Mixed' : 'Boys';
+      const age = (d.age_min && d.age_max) ? `${d.age_min}–${d.age_max} yrs`
+                : d.age_min ? `${d.age_min}+ yrs`
+                : d.age_max ? `Under ${d.age_max} yrs` : '';
+      return [d.weight_category, g, age].filter(Boolean).join(' · ');
+    }
+    function divisionBadgeCls(d) {
+      return d.gender === 'girls' ? 'badge-primary' : d.gender === 'mixed' ? 'badge-gray' : 'badge-blue';
+    }
+
+    // ── Init ──────────────────────────────────────────────────────
     async function init() {
       const ctx = await requireRole();
       if (!ctx) return;
       userId = ctx.session.user.id;
       renderNav(PAGE);
       setHeaderUser(ctx.profile);
-      await loadEvents();
+      await Promise.all([loadMyPlayers(), loadAll()]);
       showApp();
       refreshIcons();
     }
 
-    async function loadEvents() {
+    async function loadMyPlayers() {
+      const { data } = await window.db
+        .from('players')
+        .select('id,name,age,gender,weight,category,skill_level')
+        .eq('coach_id', userId)
+        .eq('status', 'active')
+        .order('name');
+      myPlayers = data || [];
+    }
+
+    async function loadAll() {
       const [regsRes, eventsRes] = await Promise.all([
-        window.db.from('competition_registrations').select('competition_id, competitions(id, name, status, start_date, end_date, location)').eq('coach_id', userId),
-        window.db.from('competitions').select('*').eq('admin_approval_status', 'approved').eq('is_public', true).order('start_date'),
+        window.db
+          .from('event_player_registrations')
+          .select(`
+            id, status, sport_type, rejection_reason, created_at,
+            competitions(id,name,start_date,end_date,location,status),
+            event_divisions(id,gender,age_min,age_max,weight_category),
+            players(id,name)
+          `)
+          .eq('coach_id', userId)
+          .order('created_at', { ascending: false }),
+
+        window.db
+          .from('competitions')
+          .select(`
+            id,name,description,start_date,end_date,location,
+            competition_type,registration_deadline,status,
+            event_divisions(id,gender,age_min,age_max,weight_category),
+            event_sport_types(id,sport_type)
+          `)
+          .eq('admin_approval_status', 'approved')
+          .eq('is_public', true)
+          .order('start_date'),
       ]);
 
-      const regs = regsRes.data || [];
-      registeredIds = new Set(regs.map(r => r.competition_id));
+      const regs   = regsRes.data || [];
+      const events = eventsRes.data || [];
 
-      // My registrations
-      const myEl = document.getElementById('my-events');
+      // Build registered key set for duplicate prevention
+      registeredKeys = new Set(
+        regs.map(r => `${r.competitions?.id}|${r.event_divisions?.id}|${r.sport_type}|${r.players?.id}`)
+      );
+
+      renderMyRegistrations(regs);
+      renderAvailableEvents(events);
+    }
+
+    // ── My Registrations ─────────────────────────────────────────
+    function renderMyRegistrations(regs) {
+      const el = document.getElementById('my-regs');
       if (regs.length === 0) {
-        myEl.innerHTML = `<div class="empty-state"><i data-lucide="calendar-days"></i><h3>Not registered yet</h3><p>Join events from the list below.</p></div>`;
-      } else {
-        myEl.innerHTML = `<div class="card"><div class="card-content" style="padding:.75rem;">` +
-          regs.map(r => {
-            const ev = r.competitions;
-            return ev ? `
-              <div class="flex items-center gap-3" style="padding:.75rem;border-bottom:1px solid var(--border);">
-                <div class="stat-icon tile-emerald" style="width:2rem;height:2rem;border-radius:.5rem;flex-shrink:0;"><i data-lucide="check-circle" style="width:.875rem;height:.875rem;"></i></div>
-                <div class="flex-1 truncate">
-                  <div class="font-medium text-sm truncate">${escHtml(ev.name)}</div>
-                  <div class="text-xs text-muted">${ev.location ? escHtml(ev.location) + ' · ' : ''}${formatDate(ev.start_date)}</div>
+        el.innerHTML = `<div class="empty-state">
+          <i data-lucide="user-x"></i>
+          <h3>No registrations yet</h3>
+          <p>Register your players from the events below.</p>
+        </div>`;
+        refreshIcons(); return;
+      }
+
+      // Group by competition
+      const byEvent = {};
+      regs.forEach(r => {
+        const evId = r.competitions?.id || 'unknown';
+        if (!byEvent[evId]) byEvent[evId] = { ev: r.competitions, rows: [] };
+        byEvent[evId].rows.push(r);
+      });
+
+      el.innerHTML = Object.values(byEvent).map(({ ev, rows }) => {
+        if (!ev) return '';
+        return `
+          <div class="card" style="margin-bottom:.75rem;">
+            <div class="card-content" style="padding:0;">
+              <div style="padding:.875rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;">
+                <div>
+                  <span class="font-semibold">${escHtml(ev.name)}</span>
+                  <span class="text-xs text-muted" style="margin-left:.625rem;">${formatDate(ev.start_date)}${ev.end_date ? ' – '+formatDate(ev.end_date) : ''}</span>
                 </div>
                 ${statusBadge(ev.status)}
               </div>
-            ` : '';
-          }).join('') + `</div></div>`;
+              ${rows.map(r => {
+                const div = r.event_divisions;
+                const pl  = r.players;
+                const st  = r.sport_type;
+                const statusMap = {
+                  pending:   ['badge-gray',   'Pending'],
+                  confirmed: ['badge-success','Confirmed'],
+                  rejected:  ['badge-error',  'Rejected'],
+                };
+                const [badgeCls, badgeLabel] = statusMap[r.status] || ['badge-gray','Unknown'];
+                return `
+                  <div class="reg-item">
+                    <div class="stat-icon tile-blue" style="width:2rem;height:2rem;border-radius:.5rem;flex-shrink:0;">
+                      <i data-lucide="user" style="width:.875rem;height:.875rem;"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-medium text-sm">${escHtml(pl?.name || '—')}</div>
+                      <div class="flex gap-1 flex-wrap" style="margin-top:.2rem;">
+                        ${div ? `<span class="badge ${divisionBadgeCls(div)}" style="font-size:.68rem;">${escHtml(divisionLabel(div))}</span>` : ''}
+                        ${st  ? `<span class="sport-chip ${sportChipCls(st)}">${escHtml(sportLabel(st))}</span>` : ''}
+                      </div>
+                      ${r.rejection_reason ? `<div class="text-xs" style="color:var(--destructive);margin-top:.2rem;">Reason: ${escHtml(r.rejection_reason)}</div>` : ''}
+                    </div>
+                    <span class="badge ${badgeCls}" style="font-size:.7rem;flex-shrink:0;">${badgeLabel}</span>
+                    ${r.status === 'pending' ? `
+                      <button class="btn btn-secondary btn-sm" style="padding:.25rem .45rem;"
+                              onclick="withdrawReg('${r.id}')" title="Withdraw">
+                        <i data-lucide="x" style="width:.8rem;height:.8rem;"></i>
+                      </button>` : ''}
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+      }).join('');
+      refreshIcons();
+    }
+
+    // ── Available Events ─────────────────────────────────────────
+    function renderAvailableEvents(events) {
+      const el = document.getElementById('available-events');
+      if (events.length === 0) {
+        el.innerHTML = `<div class="empty-state">
+          <i data-lucide="calendar-days"></i>
+          <h3>No available events</h3>
+          <p>No open competitions right now.</p>
+        </div>`;
+        refreshIcons(); return;
       }
 
-      // Available events
-      const events = (eventsRes.data || []).filter(e => !registeredIds.has(e.id));
-      const availEl = document.getElementById('available-events');
-      if (events.length === 0) {
-        availEl.innerHTML = `<div class="empty-state"><i data-lucide="calendar-days"></i><h3>No available events</h3><p>No open competitions to join right now.</p></div>`;
-      } else {
-        availEl.innerHTML = `<div style="display:grid;gap:.75rem;">` +
-          events.map(ev => `
+      el.innerHTML = `<div style="display:grid;gap:.75rem;">` +
+        events.map(ev => {
+          const divs = ev.event_divisions || [];
+          const sts  = ev.event_sport_types || [];
+          const past = ev.registration_deadline && new Date(ev.registration_deadline) < new Date();
+          return `
             <div class="card">
               <div class="card-content" style="padding:1rem;">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="flex-1">
+                <div class="flex items-start justify-between gap-3 flex-wrap">
+                  <div class="flex-1 min-w-0">
                     <div class="font-semibold">${escHtml(ev.name)}</div>
                     ${ev.description ? `<div class="text-sm text-muted mt-1">${escHtml(ev.description)}</div>` : ''}
                     <div class="flex gap-3 text-xs text-muted mt-2 flex-wrap">
                       ${ev.location ? `<span><i data-lucide="map-pin" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> ${escHtml(ev.location)}</span>` : ''}
-                      <span><i data-lucide="calendar" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> ${formatDate(ev.start_date)}${ev.end_date ? ' – ' + formatDate(ev.end_date) : ''}</span>
-                      ${ev.registration_deadline ? `<span>Deadline: ${formatDate(ev.registration_deadline)}</span>` : ''}
+                      <span><i data-lucide="calendar" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i> ${formatDate(ev.start_date)}${ev.end_date ? ' – '+formatDate(ev.end_date) : ''}</span>
+                      ${ev.registration_deadline ? `<span style="${past?'color:var(--destructive);font-weight:600;':''}">
+                        <i data-lucide="clock" style="width:.75rem;height:.75rem;display:inline;vertical-align:middle;"></i>
+                        Deadline: ${formatDate(ev.registration_deadline)}${past?' (closed)':''}
+                      </span>` : ''}
                     </div>
+
+                    ${sts.length > 0 ? `
+                      <div class="flex gap-1 flex-wrap mt-2">
+                        ${sts.map(s => `<span class="sport-chip ${sportChipCls(s.sport_type)}">${escHtml(sportLabel(s.sport_type))}</span>`).join('')}
+                      </div>` : ''}
+
+                    ${divs.length > 0 ? `
+                      <div class="flex gap-1 flex-wrap mt-2">
+                        ${divs.map(d => `<span class="badge ${divisionBadgeCls(d)}" style="font-size:.7rem;">${escHtml(divisionLabel(d))}</span>`).join('')}
+                      </div>` : ''}
                   </div>
-                  <button class="btn btn-primary btn-sm" onclick="joinEvent('${ev.id}', this)">
-                    <i data-lucide="plus"></i> Join
+
+                  <button class="btn btn-primary btn-sm" style="flex-shrink:0;"
+                          ${past ? 'disabled title="Registration closed"' : ''}
+                          onclick="openRegDialog(${JSON.stringify(ev).replace(/"/g,'&quot;')})">
+                    <i data-lucide="user-plus"></i> Register Players
                   </button>
                 </div>
               </div>
-            </div>
-          `).join('') + `</div>`;
-      }
+            </div>`;
+        }).join('') + `</div>`;
       refreshIcons();
     }
 
-    async function joinEvent(eventId, btn) {
-      btn.disabled = true;
-      btn.textContent = 'Joining…';
-      const { error } = await window.db.from('competition_registrations').insert({ competition_id: eventId, coach_id: userId, status: 'registered' });
-      if (error) {
-        showToast(error.message || 'Failed to join event', 'error');
-        btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="plus"></i> Join';
-        refreshIcons();
+    // ── Register Players Dialog ───────────────────────────────────
+    function openRegDialog(ev) {
+      dialogEvent = ev;
+      document.getElementById('reg-event-id').value  = ev.id;
+      document.getElementById('reg-event-name').textContent = ev.name;
+
+      // Populate divisions dropdown
+      const divSel = document.getElementById('reg-division');
+      const divs   = ev.event_divisions || [];
+      divSel.innerHTML = `<option value="">Select division…</option>` +
+        divs.map(d => `<option value="${d.id}">${escHtml(divisionLabel(d))}</option>`).join('');
+
+      // Populate sport types dropdown (from event_sport_types, fallback to all 4)
+      const stSel = document.getElementById('reg-sport-type');
+      const sts   = (ev.event_sport_types || []).map(s => s.sport_type);
+      const stOptions = sts.length > 0
+        ? ALL_SPORT_TYPES.filter(s => sts.includes(s.value))
+        : ALL_SPORT_TYPES;
+      stSel.innerHTML = `<option value="">Select sport type…</option>` +
+        stOptions.map(s => `<option value="${s.value}">${escHtml(s.label)}</option>`).join('');
+
+      // Reset players list
+      document.getElementById('reg-players-list').innerHTML =
+        `<div id="reg-no-players">Select a division to see eligible players.</div>`;
+      document.getElementById('reg-player-count').textContent = '';
+
+      openDialog('reg-dialog');
+      refreshIcons();
+    }
+
+    function onDivisionChange() {
+      const divId  = document.getElementById('reg-division').value;
+      const divs   = dialogEvent?.event_divisions || [];
+      const div    = divs.find(d => d.id === divId);
+      if (!div) {
+        document.getElementById('reg-players-list').innerHTML =
+          `<div id="reg-no-players">Select a division to see eligible players.</div>`;
+        document.getElementById('reg-player-count').textContent = '';
         return;
       }
-      showToast('Successfully joined event!', 'success');
-      await loadEvents();
+
+      const stVal = document.getElementById('reg-sport-type').value;
+
+      // Filter players by gender + age range
+      const eligible = myPlayers.filter(p => {
+        const genderOk = div.gender === 'mixed' ||
+          (div.gender === 'boys'  && p.gender === 'Male')   ||
+          (div.gender === 'girls' && p.gender === 'Female');
+        const ageOk = (!div.age_min || !p.age || p.age >= div.age_min) &&
+                      (!div.age_max || !p.age || p.age <= div.age_max);
+        return genderOk && ageOk;
+      });
+
+      if (eligible.length === 0) {
+        document.getElementById('reg-players-list').innerHTML =
+          `<div id="reg-no-players">No players on your roster match this division's requirements.</div>`;
+        document.getElementById('reg-player-count').textContent = '';
+        return;
+      }
+
+      document.getElementById('reg-player-count').textContent = `(${eligible.length} eligible)`;
+
+      const compId = dialogEvent.id;
+      document.getElementById('reg-players-list').innerHTML = eligible.map(p => {
+        const key       = `${compId}|${divId}|${stVal}|${p.id}`;
+        const alreadyReg = registeredKeys.has(key);
+        return `
+          <label class="player-row${alreadyReg ? ' disabled' : ''}">
+            <input type="checkbox" name="reg-player" value="${p.id}"
+                   ${alreadyReg ? 'checked disabled' : ''}>
+            <div class="player-info">
+              <div class="player-name">${escHtml(p.name)}</div>
+              <div class="player-meta">
+                ${p.age ? `Age ${p.age}` : ''}
+                ${p.gender ? ' · '+p.gender : ''}
+                ${p.weight ? ' · '+p.weight+'kg' : ''}
+                ${p.category ? ' · '+p.category : ''}
+              </div>
+            </div>
+            ${alreadyReg ? `<span class="badge badge-success" style="font-size:.68rem;flex-shrink:0;">Registered</span>` : ''}
+          </label>`;
+      }).join('');
+    }
+
+    async function submitRegistrations() {
+      const compId  = document.getElementById('reg-event-id').value;
+      const divId   = document.getElementById('reg-division').value;
+      const stVal   = document.getElementById('reg-sport-type').value;
+
+      if (!divId)  { showToast('Please select a division.',   'error'); return; }
+      if (!stVal)  { showToast('Please select a sport type.', 'error'); return; }
+
+      const checked = [...document.querySelectorAll('input[name="reg-player"]:checked:not(:disabled)')]
+        .map(cb => cb.value);
+      if (checked.length === 0) { showToast('Select at least one player.', 'error'); return; }
+
+      const btn = document.getElementById('reg-submit-btn');
+      btn.disabled = true; btn.textContent = 'Registering…';
+
+      // Find team_id — take from first player's team via players table
+      const { data: playerRows } = await window.db
+        .from('players')
+        .select('id,team_id')
+        .in('id', checked);
+
+      const rows = (playerRows || []).map(p => ({
+        competition_id: compId,
+        division_id:    divId,
+        sport_type:     stVal,
+        player_id:      p.id,
+        team_id:        p.team_id,
+        coach_id:       userId,
+        status:         'pending',
+      }));
+
+      const { error } = await window.db
+        .from('event_player_registrations')
+        .insert(rows);
+
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="user-plus"></i> Register Selected';
+      refreshIcons();
+
+      if (error) {
+        showToast(error.message || 'Failed to register players.', 'error');
+        return;
+      }
+
+      showToast(`${rows.length} player${rows.length > 1 ? 's' : ''} registered! Awaiting organizer confirmation.`, 'success');
+      closeDialog('reg-dialog');
+      await loadAll();
+      refreshIcons();
+    }
+
+    // ── Withdraw registration ────────────────────────────────────
+    async function withdrawReg(id) {
+      if (!confirmAction('Withdraw this registration?')) return;
+      const { error } = await window.db
+        .from('event_player_registrations')
+        .delete()
+        .eq('id', id)
+        .eq('coach_id', userId)
+        .eq('status', 'pending');
+      if (error) { showToast('Failed to withdraw: ' + error.message, 'error'); return; }
+      showToast('Registration withdrawn.', 'success');
+      await loadAll();
       refreshIcons();
     }
 
